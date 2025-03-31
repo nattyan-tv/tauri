@@ -27,6 +27,7 @@ use std::{
   fs::{self, File},
   io::{BufReader, Write},
   path::{Path, PathBuf},
+  process::{Command, Stdio},
 };
 
 /// Bundles the project.
@@ -155,6 +156,33 @@ fn generate_info_plist(
           <dict>"
   )?;
 
+  let git_rev_list = Command::new("git")
+    .arg("rev-list")
+    .arg("HEAD")
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let wc = Command::new("wc")
+    .arg("-l")
+    .stdin(Stdio::from(git_rev_list.stdout.unwrap()))
+    .stdout(Stdio::piped())
+    .spawn()
+    .except("failed to execute wc")
+    .unwrap();
+
+  let tr = Command::new("tr")
+    .arg("-d")
+    .arg("' '")
+    .stdin(Stdio::from(wc.stdout.unwrap()))
+    .stdout(Stdio::piped())
+    .spawn()
+    .except("failed to execute wc")
+    .unwrap();
+
+  let commands_output = tr.wait_with_output().unwrap();
+  let build_number = str::from_utf8(&commands_output.stdout).unwrap();
+
   writeln!(
     file,
     "  <key>CFBundleIdentifier</key>\n  <string>{}</string>",
@@ -178,7 +206,7 @@ fn generate_info_plist(
   writeln!(
     file,
     "  <key>CFBundleVersion</key>\n  <string>{}</string>",
-    settings.version_string()
+    build_number
   )?;
   writeln!(
     file,
